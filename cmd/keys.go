@@ -9,8 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"code.gitea.io/gitea/models"
-	"code.gitea.io/gitea/modules/setting"
+	"code.gitea.io/gitea/modules/private"
 
 	"github.com/urfave/cli"
 )
@@ -41,19 +40,10 @@ var CmdKeys = cli.Command{
 			Value: "",
 			Usage: "Base64 encoded content of the SSH key provided to the SSH Server (requires type to be provided too)",
 		},
-		cli.StringFlag{
-			Name:  "config, c",
-			Value: "custom/conf/app.ini",
-			Usage: "Custom configuration file path",
-		},
 	},
 }
 
 func runKeys(c *cli.Context) error {
-	if c.IsSet("config") {
-		setting.CustomConf = c.String("config")
-	}
-
 	if !c.IsSet("username") {
 		return errors.New("No username provided")
 	}
@@ -72,14 +62,12 @@ func runKeys(c *cli.Context) error {
 		return errors.New("No key type and content provided")
 	}
 
-	if err := initDBDisableConsole(true); err != nil {
-		return err
-	}
+	setup("keys.log", false)
 
-	publicKey, err := models.SearchPublicKeyByContent(content)
+	authorizedString, err := private.AuthorizedPublicKeyByContent(content)
 	if err != nil {
 		return err
 	}
-	fmt.Println(publicKey.AuthorizedString())
+	fmt.Println(strings.TrimSpace(authorizedString))
 	return nil
 }

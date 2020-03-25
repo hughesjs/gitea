@@ -5,10 +5,11 @@
 package repo
 
 import (
-	"code.gitea.io/gitea/modules/context"
+	"net/http"
 
-	"code.gitea.io/git"
-	api "code.gitea.io/sdk/gitea"
+	"code.gitea.io/gitea/modules/context"
+	"code.gitea.io/gitea/modules/git"
+	api "code.gitea.io/gitea/modules/structs"
 )
 
 // GetGitAllRefs get ref or an list all the refs of a repository
@@ -72,24 +73,29 @@ func GetGitRefs(ctx *context.APIContext) {
 	getGitRefsInternal(ctx, ctx.Params("*"))
 }
 
-func getGitRefsInternal(ctx *context.APIContext, filter string) {
+func getGitRefs(ctx *context.APIContext, filter string) ([]*git.Reference, string, error) {
 	gitRepo, err := git.OpenRepository(ctx.Repo.Repository.RepoPath())
 	if err != nil {
-		ctx.Error(500, "OpenRepository", err)
-		return
+		return nil, "OpenRepository", err
 	}
+	defer gitRepo.Close()
+
 	if len(filter) > 0 {
 		filter = "refs/" + filter
 	}
-
 	refs, err := gitRepo.GetRefsFiltered(filter)
+	return refs, "GetRefsFiltered", err
+}
+
+func getGitRefsInternal(ctx *context.APIContext, filter string) {
+	refs, lastMethodName, err := getGitRefs(ctx, filter)
 	if err != nil {
-		ctx.Error(500, "GetRefsFiltered", err)
+		ctx.Error(http.StatusInternalServerError, lastMethodName, err)
 		return
 	}
 
 	if len(refs) == 0 {
-		ctx.Status(404)
+		ctx.NotFound()
 		return
 	}
 
@@ -101,15 +107,14 @@ func getGitRefsInternal(ctx *context.APIContext, filter string) {
 			Object: &api.GitObject{
 				SHA:  refs[i].Object.String(),
 				Type: refs[i].Type,
-				// TODO: Add commit/tag info URL
-				//URL:  ctx.Repo.Repository.APIURL() + "/git/" + refs[i].Type + "s/" + refs[i].Object.String(),
+				URL:  ctx.Repo.Repository.APIURL() + "/git/" + refs[i].Type + "s/" + refs[i].Object.String(),
 			},
 		}
 	}
 	// If single reference is found and it matches filter exactly return it as object
 	if len(apiRefs) == 1 && apiRefs[0].Ref == filter {
-		ctx.JSON(200, &apiRefs[0])
+		ctx.JSON(http.StatusOK, &apiRefs[0])
 		return
 	}
-	ctx.JSON(200, &apiRefs)
+	ctx.JSON(http.StatusOK, &apiRefs)
 }
